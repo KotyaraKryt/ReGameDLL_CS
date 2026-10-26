@@ -140,6 +140,12 @@ char EXT_FUNC PM_FindTextureType(char *name)
 
 	DbgAssert(pm_shared_initialized);
 
+#ifdef REGAMEDLL_ADD
+	char chMapType = TEXTURETYPE_FindMap(name);
+	if (chMapType)
+		return chMapType;
+#endif
+
 	left = 0;
 	right = pm_gcTextures - 1;
 

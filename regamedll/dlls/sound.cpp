@@ -50,6 +50,16 @@ sentenceg rgsentenceg[MAX_SENTENCE_GROUPS];
 char grgszTextureName[MAX_TEXTURES][MAX_TEXTURENAME_LENGHT];
 char grgchTextureType[MAX_TEXTURES];
 
+#ifdef REGAMEDLL_ADD
+// Textures of the current map from maps/<mapname>_materials.txt, they take precedence over materials.txt
+int gcMapTextures = 0;
+char grgszMapTextureName[MAX_TEXTURES][MAX_TEXTURENAME_LENGHT];
+char grgchMapTextureType[MAX_TEXTURES];
+
+// precache_generic keeps the pointer rather than a copy of the path
+char gszMapMaterialsPath[MAX_PATH];
+#endif
+
 TYPEDESCRIPTION CAmbientGeneric::m_SaveData[] =
 {
 	DEFINE_FIELD(CAmbientGeneric, m_flAttenuation, FIELD_FLOAT),
@@ -1500,29 +1510,25 @@ char *memfgets(byte *pMemFile, int fileSize, int &filePos, char *pBuffer, int bu
 	return nullptr;
 }
 
-void TEXTURETYPE_Init()
+// reads the "<type> <texture name>" lines of a materials file,
+// returns how many textures it read or -1 when there is no such file
+int TEXTURETYPE_ReadFile(const char *pszFileName, char (*pszNames)[MAX_TEXTURENAME_LENGHT], char *pchTypes)
 {
 	char buffer[512];
 	int i, j;
 	byte *pMemFile;
 	int fileSize, filePos = 0;
+	int count = 0;
 
-	if (fTextureTypeInit)
-		return;
-
-	Q_memset(&(grgszTextureName[0][0]), 0, sizeof(grgszTextureName));
-	Q_memset(grgchTextureType, 0, sizeof(grgchTextureType));
-
-	gcTextures = 0;
 	Q_memset(buffer, 0, sizeof(buffer));
 
-	pMemFile = LOAD_FILE_FOR_ME("sound/materials.txt", &fileSize);
+	pMemFile = LOAD_FILE_FOR_ME(pszFileName, &fileSize);
 
 	if (!pMemFile)
-		return;
+		return -1;
 
 	// for each line in the file...
-	while (memfgets(pMemFile, fileSize, filePos, buffer, sizeof(buffer) - 1) && (gcTextures < MAX_TEXTURES))
+	while (memfgets(pMemFile, fileSize, filePos, buffer, sizeof(buffer) - 1) && (count < MAX_TEXTURES))
 	{
 		// skip whitespace
 		i = 0;
@@ -1537,7 +1543,7 @@ void TEXTURETYPE_Init()
 			continue;
 
 		// get texture type
-		grgchTextureType[gcTextures] = toupper(buffer[i++]);
+		pchTypes[count] = toupper(buffer[i++]);
 
 		// skip whitespace
 		while (buffer[i] && isspace(buffer[i]))
@@ -1546,25 +1552,73 @@ void TEXTURETYPE_Init()
 		if (!buffer[i])
 			continue;
 
-		// get sentence name
+		// get texture name, the last line may end without a newline
 		j = i;
 		while (buffer[j] && !isspace(buffer[j]))
 			j++;
 
-		if (!buffer[j])
-			continue;
-
-		// null-terminate name and save in sentences array
+		// null-terminate name and save in the array
 		j = Q_min(j, MAX_TEXTURENAME_LENGHT - 1 + i);
 		buffer[j] = '\0';
 
-		Q_strlcpy(grgszTextureName[gcTextures++], &(buffer[i]));
+		Q_strlcpy(pszNames[count++], &(buffer[i]));
 	}
 
 	FREE_FILE(pMemFile);
 
+	return count;
+}
+
+void TEXTURETYPE_Init()
+{
+	if (fTextureTypeInit)
+		return;
+
+	Q_memset(&(grgszTextureName[0][0]), 0, sizeof(grgszTextureName));
+	Q_memset(grgchTextureType, 0, sizeof(grgchTextureType));
+
+	gcTextures = TEXTURETYPE_ReadFile("sound/materials.txt", grgszTextureName, grgchTextureType);
+
+	if (gcTextures < 0)
+	{
+		gcTextures = 0;
+		return;
+	}
+
 	fTextureTypeInit = TRUE;
 }
+
+#ifdef REGAMEDLL_ADD
+// loads maps/<mapname>_materials.txt of the current map, if it has one, and sends it to clients with the map
+void TEXTURETYPE_InitMap()
+{
+	Q_snprintf(gszMapMaterialsPath, sizeof(gszMapMaterialsPath), "maps/%s_materials.txt", STRING(gpGlobals->mapname));
+
+	gcMapTextures = TEXTURETYPE_ReadFile(gszMapMaterialsPath, grgszMapTextureName, grgchMapTextureType);
+
+	if (gcMapTextures < 0)
+	{
+		gcMapTextures = 0;
+		return;
+	}
+
+	PRECACHE_GENERIC(gszMapMaterialsPath);
+}
+
+// given texture name, find texture type in the current map's materials file
+// if it is not listed there, return 0
+char TEXTURETYPE_FindMap(const char *name)
+{
+	// a later line for the same texture wins
+	for (int i = gcMapTextures - 1; i >= 0; i--)
+	{
+		if (!Q_strnicmp(name, grgszMapTextureName[i], MAX_TEXTURENAME_LENGHT - 1))
+			return grgchMapTextureType[i];
+	}
+
+	return 0;
+}
+#endif
 
 // given texture name, find texture type
 // if not found, return type 'concrete'
@@ -1574,6 +1628,12 @@ void TEXTURETYPE_Init()
 char TEXTURETYPE_Find(char *name)
 {
 	// CONSIDER: pre-sort texture names and perform faster binary search here
+
+#ifdef REGAMEDLL_ADD
+	char chMapType = TEXTURETYPE_FindMap(name);
+	if (chMapType)
+		return chMapType;
+#endif
 
 	for (int i = 0; i < gcTextures; i++)
 	{

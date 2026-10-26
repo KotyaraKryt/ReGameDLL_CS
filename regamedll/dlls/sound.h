@@ -184,6 +184,11 @@ void EMIT_GROUPNAME_SUIT(edict_t *entity, const char *groupname);
 char *memfgets(byte *pMemFile, int fileSize, int &filePos, char *pBuffer, int bufferSize);
 void TEXTURETYPE_Init();
 char TEXTURETYPE_Find(char *name);
+
+#ifdef REGAMEDLL_ADD
+void TEXTURETYPE_InitMap();
+char TEXTURETYPE_FindMap(const char *name);
+#endif
 float TEXTURETYPE_PlaySound(TraceResult *ptr, Vector vecSrc, Vector vecEnd, int iBulletType);
 
 extern char gszallsentencenames[MAX_SENTENCE_VOXFILE][MAX_SENTENCE_NAME];

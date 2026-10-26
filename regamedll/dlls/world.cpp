@@ -317,6 +317,10 @@ void CWorld::Precache()
 	// init texture type array from materials.txt
 	TEXTURETYPE_Init();
 
+#ifdef REGAMEDLL_ADD
+	TEXTURETYPE_InitMap();
+#endif
+
 	// the area based ambient sounds MUST be the first precache_sounds
 	// player precaches
 	// get weapon precaches
